@@ -24,14 +24,14 @@ static void indent(js_serialiser_t *s)
 {
     int i;
     for (i = 0; i < s->level; i++) {
-        s->print_function(s->call_arg, "  ");
+        s->print(s->call_arg, "  ");
     }
 }
 
 static void link_to_previous(js_serialiser_t *s)
 {
     if (s->attribute_count++ > 0) {
-        s->print_function(s->call_arg, ",\n");
+        s->print(s->call_arg, ",\n");
     }
 }
 
@@ -40,16 +40,25 @@ void js_document(js_serialiser_t *s)
 {
     memset(s, 0, sizeof(*s));
     s->attribute_count = 0;
-    s->print_function = print_to_stdout;
+    s->print = print_to_stdout;
     s->call_arg = NULL;
 
-    s->print_function(s->call_arg, "{\n");
+    s->print(s->call_arg, "{\n");
     s->level = 1;
+}
+
+void js_document3(js_serialiser_t *s, 
+                  print_function_t print_function, 
+                  void *call_arg)
+{
+    js_document(s);
+    s->print = print_function;
+    s->call_arg = call_arg;
 }
 
 void js_document_end(js_serialiser_t *s)
 {
-    s->print_function(s->call_arg, "\n}");
+    s->print(s->call_arg, "\n}");
 }
 
 void js_object(js_serialiser_t *s, char *name)
@@ -58,7 +67,7 @@ void js_object(js_serialiser_t *s, char *name)
     indent(s);
  
     JS_FORMAT_BUFFER("\"%s\": {\n", name);
-    s->print_function(s->call_arg, print_buffer);
+    s->print(s->call_arg, print_buffer);
 
     s->attribute_count = 0;
     s->level++;
@@ -66,11 +75,11 @@ void js_object(js_serialiser_t *s, char *name)
 
 void js_object_end(js_serialiser_t *s)
 {
-    s->print_function(s->call_arg, "\n");
+    s->print(s->call_arg, "\n");
 
     s->level--;
     indent(s);
-    s->print_function(s->call_arg, "}");
+    s->print(s->call_arg, "}");
 
 }
 
@@ -80,7 +89,7 @@ void js_number(struct js_serialiser *s, char *name, double value)
     indent(s);
 
     JS_FORMAT_BUFFER("\"%s\": %1.1f", name, value);
-    s->print_function(s->call_arg, print_buffer);
+    s->print(s->call_arg, print_buffer);
 }
 
 void js_int_number(struct js_serialiser *s, char *name, long value)
@@ -89,7 +98,7 @@ void js_int_number(struct js_serialiser *s, char *name, long value)
     indent(s);
 
     JS_FORMAT_BUFFER("\"%s\": %ld", name, value);
-    s->print_function(s->call_arg, print_buffer);
+    s->print(s->call_arg, print_buffer);
 }
 
 void js_string(js_serialiser_t *s, char *name, char *value)
@@ -98,7 +107,7 @@ void js_string(js_serialiser_t *s, char *name, char *value)
     indent(s);
 
     JS_FORMAT_BUFFER("\"%s\": \"%s\"", name, value);
-    s->print_function(s->call_arg, print_buffer);
+    s->print(s->call_arg, print_buffer);
 }
 
 void js_boolean(js_serialiser_t *s, char *name, int boolean)
@@ -107,7 +116,7 @@ void js_boolean(js_serialiser_t *s, char *name, int boolean)
     indent(s);
 
     JS_FORMAT_BUFFER("\"%s\": %s", name, boolean ? "true" : "false");
-    s->print_function(s->call_arg, print_buffer);
+    s->print(s->call_arg, print_buffer);
 }
 
 
