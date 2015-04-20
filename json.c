@@ -51,6 +51,23 @@ static void print_to_buffer(void *call_arg, const char *output)
     context->next_offset += written;
 }
 
+static void push_scopes(js_serialiser_t *s)
+{
+    s->level++;
+    s->scopes[s->level].in_array = 0;
+    s->scopes[s->level].attribute_count = 0;
+}
+
+static void pop_scopes(js_serialiser_t *s)
+{
+    memset(&s->scopes[s->level], 0, sizeof(s->scopes[s->level]));
+    s->level--;
+}
+
+static int in_array(js_serialiser_t *s)
+{
+    return s->scopes[s->level].in_array;
+}
 
 static void indent_if_pretty(js_serialiser_t *s)
 {
@@ -71,7 +88,7 @@ static void newline_if_pretty(js_serialiser_t *s)
 
 static void link_to_previous(js_serialiser_t *s)
 {
-    if (s->attribute_count++ > 0) {
+    if (s->scopes[s->level].attribute_count++ > 0) {
         s->print(s->call_arg, ",");
         newline_if_pretty(s);
     }
@@ -80,7 +97,7 @@ static void link_to_previous(js_serialiser_t *s)
 static void js_document_init(js_serialiser_t *s)
 {
     memset(s, 0, sizeof(*s));
-    s->attribute_count = 0;
+    s->scopes[s->level].attribute_count = 0;
     s->print = print_to_stdout;
     s->call_arg = NULL;
 }
@@ -89,8 +106,8 @@ static void js_document_print(js_serialiser_t *s)
 {
     s->print(s->call_arg, "{");
     newline_if_pretty(s);
-    s->level = 1;
-    s->in_array = 0;
+
+    push_scopes(s);
 }
 
 void js_document(js_serialiser_t *s)
@@ -115,6 +132,8 @@ void js_document4(js_serialiser_t *s,
 
 void js_document_end(js_serialiser_t *s)
 {
+    pop_scopes(s);
+
     newline_if_pretty(s);
     s->print(s->call_arg, "}");
 }
@@ -124,7 +143,7 @@ void js_object(js_serialiser_t *s, char *name)
     link_to_previous(s);
     indent_if_pretty(s);
  
-    if (s->in_array) {
+    if (in_array(s)) {
         s->print(s->call_arg, "{");       
     }
     else {
@@ -133,15 +152,16 @@ void js_object(js_serialiser_t *s, char *name)
     }
 
     newline_if_pretty(s);
-    s->attribute_count = 0;
-    s->level++;
+
+    push_scopes(s);
 }
 
 void js_object_end(js_serialiser_t *s)
 {
     newline_if_pretty(s);
 
-    s->level--;
+    pop_scopes(s);
+
     indent_if_pretty(s);
     s->print(s->call_arg, "}");
 }
@@ -151,7 +171,7 @@ void js_array(js_serialiser_t *s, char *name)
     link_to_previous(s);
     indent_if_pretty(s);
  
-    if (s->in_array) {
+    if (in_array(s)) {
         s->print(s->call_arg, "[");
     }
     else {
@@ -159,17 +179,18 @@ void js_array(js_serialiser_t *s, char *name)
         s->print(s->call_arg, print_buffer);
     }
     newline_if_pretty(s);
-    s->in_array = 1; 
-    s->attribute_count = 0;
-    s->level++;
+
+    push_scopes(s);
+    s->scopes[s->level].in_array = 1; 
 }
 
 void js_array_end(js_serialiser_t *s)
 {
-    s->level--;
+    // Todo: clear the old stack frame
+    pop_scopes(s);
+
     indent_if_pretty(s);
     s->print(s->call_arg, "]");
-    s->in_array = 0;
 }
 
 void js_number(struct js_serialiser *s, char *name, double value)
@@ -177,7 +198,7 @@ void js_number(struct js_serialiser *s, char *name, double value)
     link_to_previous(s);
     indent_if_pretty(s);
 
-    if (s->in_array) {
+    if (in_array(s)) {
         JS_FORMAT_BUFFER("%1.1f", value);
         s->print(s->call_arg, print_buffer);
     }
@@ -192,7 +213,7 @@ void js_int_number(struct js_serialiser *s, char *name, long value)
     link_to_previous(s);
     indent_if_pretty(s);
 
-    if (s->in_array) {
+    if (in_array(s)) {
         JS_FORMAT_BUFFER("%ld", value);
         s->print(s->call_arg, print_buffer);
     }
@@ -207,7 +228,7 @@ void js_string(js_serialiser_t *s, char *name, char *value)
     link_to_previous(s);
     indent_if_pretty(s);
 
-    if (s->in_array) {
+    if (in_array(s)) {
         JS_FORMAT_BUFFER("\"%s\"", value);
         s->print(s->call_arg, print_buffer);
     }
@@ -222,7 +243,7 @@ void js_boolean(js_serialiser_t *s, char *name, int boolean)
     link_to_previous(s);
     indent_if_pretty(s);
 
-    if (s->in_array) {
+    if (in_array(s)) {
         JS_FORMAT_BUFFER("%s", boolean ? "true" : "false");
         s->print(s->call_arg, print_buffer);
     }
@@ -256,7 +277,7 @@ void test_array_elements_do_not_have_names()
   js_document_end(&s);
 
   printf("output:\n%s\n", buffer);
-  assert(0 == strncmp(buffer, "{\"foo\": [1,2.0,true,{}, \"foo\"]}",
+  assert(0 == strncmp(buffer, "{\"foo\": [1,2.0,true,{},\"foo\"]}",
                  JS_BUFLEN_SIZE));
 }
 
