@@ -52,18 +52,28 @@ static void print_to_buffer(void *call_arg, const char *output)
 }
 
 
-static void indent(js_serialiser_t *s)
+static void indent_if_pretty(js_serialiser_t *s)
 {
-    int i;
-    for (i = 0; i < s->level; i++) {
-        s->print(s->call_arg, "  ");
+    if (s->pretty_print) {
+        int i;
+        for (i = 0; i < s->level; i++) {
+            s->print(s->call_arg, "  ");
+        }
+    }
+}
+
+static void newline_if_pretty(js_serialiser_t *s)
+{
+    if (s->pretty_print) {
+        s->print(s->call_arg, "\n");
     }
 }
 
 static void link_to_previous(js_serialiser_t *s)
 {
     if (s->attribute_count++ > 0) {
-        s->print(s->call_arg, ",\n");
+        s->print(s->call_arg, ",");
+        newline_if_pretty(s);
     }
 }
 
@@ -77,7 +87,8 @@ static void js_document_init(js_serialiser_t *s)
 
 static void js_document_print(js_serialiser_t *s)
 {
-    s->print(s->call_arg, "{\n");
+    s->print(s->call_arg, "{");
+    newline_if_pretty(s);
     s->level = 1;
     s->in_array = 0;
 }
@@ -104,47 +115,50 @@ void js_document4(js_serialiser_t *s,
 
 void js_document_end(js_serialiser_t *s)
 {
-    s->print(s->call_arg, "\n}");
+    newline_if_pretty(s);
+    s->print(s->call_arg, "}");
 }
 
 void js_object(js_serialiser_t *s, char *name)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
  
     if (s->in_array) {
-        s->print(s->call_arg, "{\n");
+        s->print(s->call_arg, "{");       
     }
     else {
-        JS_FORMAT_BUFFER("\"%s\": {\n", name);
+        JS_FORMAT_BUFFER("\"%s\": {", name);
         s->print(s->call_arg, print_buffer);
     }
- 
+
+    newline_if_pretty(s);
     s->attribute_count = 0;
     s->level++;
 }
 
 void js_object_end(js_serialiser_t *s)
 {
-    s->print(s->call_arg, "\n");
+    newline_if_pretty(s);
 
     s->level--;
-    indent(s);
+    indent_if_pretty(s);
     s->print(s->call_arg, "}");
 }
 
 void js_array(js_serialiser_t *s, char *name)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
  
     if (s->in_array) {
-        s->print(s->call_arg, "[\n");
+        s->print(s->call_arg, "[");
     }
     else {
-        JS_FORMAT_BUFFER("\"%s\": [\n", name);
+        JS_FORMAT_BUFFER("\"%s\": [", name);
         s->print(s->call_arg, print_buffer);
     }
+    newline_if_pretty(s);
     s->in_array = 1; 
     s->attribute_count = 0;
     s->level++;
@@ -153,7 +167,7 @@ void js_array(js_serialiser_t *s, char *name)
 void js_array_end(js_serialiser_t *s)
 {
     s->level--;
-    indent(s);
+    indent_if_pretty(s);
     s->print(s->call_arg, "]");
     s->in_array = 0;
 }
@@ -161,7 +175,7 @@ void js_array_end(js_serialiser_t *s)
 void js_number(struct js_serialiser *s, char *name, double value)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
 
     if (s->in_array) {
         JS_FORMAT_BUFFER("%1.1f", value);
@@ -176,7 +190,7 @@ void js_number(struct js_serialiser *s, char *name, double value)
 void js_int_number(struct js_serialiser *s, char *name, long value)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
 
     if (s->in_array) {
         JS_FORMAT_BUFFER("%ld", value);
@@ -191,7 +205,7 @@ void js_int_number(struct js_serialiser *s, char *name, long value)
 void js_string(js_serialiser_t *s, char *name, char *value)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
 
     if (s->in_array) {
         JS_FORMAT_BUFFER("\"%s\"", value);
@@ -206,7 +220,7 @@ void js_string(js_serialiser_t *s, char *name, char *value)
 void js_boolean(js_serialiser_t *s, char *name, int boolean)
 {
     link_to_previous(s);
-    indent(s);
+    indent_if_pretty(s);
 
     if (s->in_array) {
         JS_FORMAT_BUFFER("%s", boolean ? "true" : "false");
@@ -230,7 +244,7 @@ void test_array_elements_do_not_have_names()
 
   js_serialiser_t s;
 
-  js_document4(&s, print_to_buffer, &output, 1);
+  js_document4(&s, print_to_buffer, &output, 0);
   js_array(&s, "foo");
     js_int_number(&s, "i", 1);
     js_number(&s, "n", 2);
@@ -242,6 +256,8 @@ void test_array_elements_do_not_have_names()
   js_document_end(&s);
 
   printf("output:\n%s\n", buffer);
+  assert(0 == strncmp(buffer, "{\"foo\": [1,2.0,true,{}, \"foo\"]}",
+                 JS_BUFLEN_SIZE));
 }
 
 int main(void)
