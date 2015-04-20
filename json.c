@@ -253,32 +253,40 @@ void js_boolean(js_serialiser_t *s, char *name, int boolean)
     }
 }
 
+static void init_string_printer(print_buffer_t *printer_param, 
+                                char *buffer,
+                                int buf_size)
+{
+    memset(buffer, 0, buf_size);
+    memset(printer_param, 0, sizeof(*printer_param));
+
+    printer_param->output = buffer;
+    printer_param->max_length = buf_size;
+}
+
+
 void test_array_elements_do_not_have_names()
 {
-  char buffer[JS_BUFLEN_SIZE];
-  memset(buffer, 0, sizeof(buffer));
+    char buffer[JS_BUFLEN_SIZE];
+    print_buffer_t printer_parameter;
+    js_serialiser_t s;
 
-  print_buffer_t output;
-  memset(&output, 0, sizeof(output));
-  output.output = buffer;
-  output.max_length = JS_BUFLEN_SIZE;
+    init_string_printer(&printer_parameter, buffer, JS_BUFLEN_SIZE);
 
-  js_serialiser_t s;
+    js_document4(&s, print_to_buffer, &printer_parameter, 0);
+    js_array(&s, "foo");
+      js_int_number(&s, "i", 1);
+      js_number(&s, "n", 2);
+      js_boolean(&s, "bool", 1);
+      js_object(&s, "object");
+      js_object_end(&s);
+      js_string(&s, "str", "foo");
+    js_array_end(&s);
+    js_document_end(&s);
 
-  js_document4(&s, print_to_buffer, &output, 0);
-  js_array(&s, "foo");
-    js_int_number(&s, "i", 1);
-    js_number(&s, "n", 2);
-    js_boolean(&s, "bool", 1);
-    js_object(&s, "object");
-    js_object_end(&s);
-    js_string(&s, "str", "foo");
-  js_array_end(&s);
-  js_document_end(&s);
-
-  printf("output:\n%s\n", buffer);
-  assert(0 == strncmp(buffer, "{\"foo\": [1,2.0,true,{},\"foo\"]}",
-                 JS_BUFLEN_SIZE));
+    printf("output:\n%s\n", buffer);
+    assert(0 == strncmp(buffer, "{\"foo\": [1,2.0,true,{},\"foo\"]}",
+                        JS_BUFLEN_SIZE));
 }
 
 int main(void)
