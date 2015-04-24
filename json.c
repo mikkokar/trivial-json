@@ -253,27 +253,33 @@ void js_boolean(js_serialiser_t *s, char *name, int boolean)
     }
 }
 
-static void init_string_printer(print_buffer_t *printer_param, 
-                                char *buffer,
-                                int buf_size)
+static print_buffer_t *
+init_print_buffer(print_buffer_t *printer_param, 
+                  char *buffer,
+                  int buf_size)
 {
     memset(buffer, 0, buf_size);
     memset(printer_param, 0, sizeof(*printer_param));
 
     printer_param->output = buffer;
     printer_param->max_length = buf_size;
+    return printer_param;
 }
 
+/*
+ * For testing purposes only:
+ */
+
+static char buffer[JS_BUFLEN_SIZE];
+static print_buffer_t argument;
+static js_serialiser_t s;
 
 void test_array_elements_do_not_have_names()
 {
-    char buffer[JS_BUFLEN_SIZE];
-    print_buffer_t printer_parameter;
-    js_serialiser_t s;
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
 
-    init_string_printer(&printer_parameter, buffer, JS_BUFLEN_SIZE);
-
-    js_document4(&s, print_to_buffer, &printer_parameter, 0);
     js_array(&s, "foo");
       js_int_number(&s, "i", 1);
       js_number(&s, "n", 2);
@@ -289,34 +295,157 @@ void test_array_elements_do_not_have_names()
                         JS_BUFLEN_SIZE));
 }
 
+void test_empty_document()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, "{}"));
+}
+
+void test_no_comma_before_first_attribute()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_boolean(&s, "foo", 1);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, "{\"foo\": true}"));
+}
+
+void test_separates_attributes_with_commas()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_boolean(&s, "first", 1);
+      js_string(&s, "second", "bar");
+      js_int_number(&s, "third", 3);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": true,\"second\": \"bar\",\"third\": 3}"));
+}
+
+void test_new_object_opens_new_scope_for_attributes()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_object(&s, "object");
+        js_boolean(&s, "first", 1);
+      js_object_end(&s);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"object\": {\"first\": true}}"));
+}
+
+void test_adds_comma_between_object_and_primitive_attribute()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_object(&s, "first");
+        js_boolean(&s, "second", 1);
+      js_object_end(&s);
+      js_int_number(&s, "third", 3);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": {\"second\": true},\"third\": 3}"));
+}
+
+void test_empty_objects()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_object(&s, "first");
+      js_object_end(&s);
+      js_object(&s, "second");
+      js_object_end(&s);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": {},\"second\": {}}"));
+}
+
+void test_empty_arrays()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_array(&s, "first");
+      js_array_end(&s);
+      js_array(&s, "second");
+      js_array_end(&s);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": [],\"second\": []}"));
+}
+
+void test_ignores_attribute_name_for_array_elements()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_array(&s, "first");
+        js_boolean(&s, "ignored", 1);
+        js_string(&s, "ignored", "2");
+        js_number(&s, "ignored", 3);
+        js_int_number(&s, "ignored", 4);
+        js_object(&s, "ignored");
+        js_object_end(&s);
+      js_array_end(&s);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": [true,\"2\",3.0,4,{}]}"));
+}
+
+void test_adds_comma_between_array_and_primitive_attribute()
+{
+    js_document4(&s, print_to_buffer, 
+                 init_print_buffer(&argument, buffer, JS_BUFLEN_SIZE), 
+                 0);
+      js_array(&s, "first");
+        js_boolean(&s, "second", 1);
+      js_array_end(&s);
+      js_int_number(&s, "third", 3);
+    js_document_end(&s);
+
+    printf("output:\n%s\n", buffer);
+    assert(0 == strcmp(buffer, 
+           "{\"first\": [true],\"third\": 3}"));
+}
+
+
 int main(void)
 {
-  test_array_elements_do_not_have_names();
-/*
-  js_serialiser_t s;
+    test_empty_document();
+    test_no_comma_before_first_attribute();
+    test_separates_attributes_with_commas();
+    test_array_elements_do_not_have_names();
+    test_new_object_opens_new_scope_for_attributes();
+    test_adds_comma_between_object_and_primitive_attribute();
+    test_empty_objects();
 
-  js_document(&s);
-    js_object(&s, "outer");
-      js_int_number(&s, "name", 1);
-      js_string(&s, "foo", "bar");
-      js_object(&s, "example");
-        js_int_number(&s, "name", 1);
-        js_number(&s, "foo", 2);
-      js_object_end(&s);
-      js_number(&s, "bar", 3.005);
-    js_object_end(&s);
-    js_boolean(&s, "true", 1);
-    js_array(&s, "array");
-      js_boolean(&s, "e1", 1);
-      js_boolean(&s, "e2", 0);
-      js_boolean(&s, "e3", 1);
-      js_boolean(&s, "e4", 0);
-    js_array_end(&s); 
-    js_boolean(&s, "false", 0);
-  js_document_end(&s);
-
-  printf("\n");
-*/
-  return 0;
+    test_empty_arrays();
+    test_ignores_attribute_name_for_array_elements();
+    test_adds_comma_between_array_and_primitive_attribute();
+    return 0;
 }
 
